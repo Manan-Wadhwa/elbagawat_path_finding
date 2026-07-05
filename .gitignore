@@ -1,0 +1,16 @@
+*/examples/
+data/
+plans/
+2026 El Bagawat Database Draft 1.xlsx
+Site_CAD_Working_converted.dxf
+.vscode/
+_pycache__/
+*.geojson
+*.csv
+*.shp
+*.tif
+*.gpkg
+*.cpg
+*.prj
+*.dbf
+*.shx
