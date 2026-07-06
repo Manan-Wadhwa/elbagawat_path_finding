@@ -78,7 +78,7 @@ fp, n_labelled, n_with_dir, n_no_dir, n_unlabelled = \
     shared.attribute_footprints(fp, crosswalk, df)
 
 crosswalk.to_csv(shared.OUT / "crosswalk.csv", index=False)
-print("→ crosswalk.csv")
+print("-> crosswalk.csv")
 
 shared.plot_bipartite_matching(fp, dxf_labels, crosswalk, H_rough, FIGS)
 shared.plot_attribution_map(fp, n_with_dir, n_no_dir, n_unlabelled, FIGS)
@@ -93,7 +93,7 @@ gis_out = shared.OUT / "vector_gis"
 gis_out.mkdir(exist_ok=True)
 doors_gdf.to_crs("EPSG:4326").to_file(str(gis_out / "doors_native_approach5.geojson"), driver="GeoJSON")
 doors_pts.to_crs("EPSG:4326").to_file(str(gis_out / "door_points_approach5.geojson"),  driver="GeoJSON")
-print("→ doors_native_approach5.geojson  door_points_approach5.geojson")
+print("-> doors_native_approach5.geojson  door_points_approach5.geojson")
 
 shared.plot_doors_all(fp, doors_gdf, FIGS)
 shared.plot_doors_zoom(fp, doors_gdf, FIGS)
@@ -114,7 +114,7 @@ shared.plot_door_elevation_histogram(doors_pts, FIGS)
 
 # %%
 # CELL 8  Build obstacle-free k-NN pedestrian navigation graph
-print("Building obstacle-free outdoor pedestrian navigation network …")
+print("Building obstacle-free outdoor pedestrian navigation network ...")
 
 b_union = (fp.geometry.union_all()
            if hasattr(fp.geometry, "union_all") else fp.geometry.unary_union)
@@ -228,11 +228,11 @@ plt.show()
 
 # %%
 # CELL 10  Edge betweenness centrality + GIS export
-print("Computing edge betweenness centrality …")
+print("Computing edge betweenness centrality ...")
 edge_bc = nx.edge_betweenness_centrality(G, weight="weight", normalized=True)
 nx.set_edge_attributes(G, edge_bc, "betweenness")
 bc_arr = np.array(list(edge_bc.values()))
-print(f"  BC range: {bc_arr.min():.6f} – {bc_arr.max():.6f}")
+print(f"  BC range: {bc_arr.min():.6f} - {bc_arr.max():.6f}")
 
 path_rows = [
     {"geometry":   LineString([(G.nodes[u]["x"], G.nodes[u]["y"]),
@@ -259,7 +259,7 @@ fp_export.to_crs("EPSG:4326").to_file(
 fp_export.to_file(str(gis_out / "footprints_attributed.shp"))
 doors_gdf.to_file(str(gis_out / "doors_native_approach5.shp"))
 doors_pts.to_file(str(gis_out / "door_points_approach5.shp"))
-print(f"GIS export complete → {gis_out}")
+print(f"GIS export complete -> {gis_out}")
 
 
 # %%
@@ -414,7 +414,7 @@ else:
 
 # %%
 # CELL 15  Ultra high-resolution master zoomable map (300 DPI)
-print("Generating ultra high-resolution zoomable master map …")
+print("Generating ultra high-resolution zoomable master map ...")
 
 fig, ax = plt.subplots(figsize=(28, 24))
 ax.imshow(dem["disp"], extent=dem["extent"], origin="upper",
@@ -467,7 +467,7 @@ zoom_regions = [
      "Central Necropolis Navigation Corridors"),
 ]
 
-print("Generating digital zoom detail maps …")
+print("Generating digital zoom detail maps ...")
 for fname, (xmin, xmax, ymin, ymax), ztitle in zoom_regions:
     fig, ax = plt.subplots(figsize=(16, 14))
     ax.imshow(dem["disp"], extent=dem["extent"], origin="upper",

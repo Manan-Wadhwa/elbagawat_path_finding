@@ -1,3 +1,5 @@
+# %%
+# CELL 0  Imports, helper functions, and configuration
 import ezdxf
 import networkx as nx
 from shapely.geometry import Point, LineString, Polygon
@@ -204,40 +206,45 @@ def bipartite_label_match(dxf_labels, H, footprints_gdf, max_dist_m=100.0):
             })
     return pd.DataFrame(results)
 
-if __name__ == "__main__":
-    footprints = gpd.read_file(SHP_PATH)
-    footprints['ID'] = footprints['ID'].astype(str)
-    
-    dxf_labels = get_dxf_labels(DXF_WORKING)
-    H = compute_affine(dxf_labels, footprints)
-    
-    lines = extract_dxf_walls(DXF_WORKING)
-    
-    crosswalk = bipartite_label_match(dxf_labels, H, footprints)
-    crosswalk.to_csv(OUT_CSV, index=False)
-    
-    master_polygons = footprints.merge(crosswalk[['footprint_id', 'chapel_id', 'match_method']], 
-                                       left_on='ID', right_on='footprint_id', how='left')
-    for col in master_polygons.columns:
-        if master_polygons[col].dtype == object: master_polygons[col] = master_polygons[col].astype(str)
-            
-    master_polygons.to_file(OUT_GPKG, layer='buildings', driver='GPKG')
-    
-    print("Saving Data...")
-    lines_utm, og_doors, greedy_doors, collinear_doors, boolean_doors, native_doors, local_doors, hybrid_doors, walls_gdf = process_entrances(lines, H, footprints, crosswalk, dxf_labels)
-    
-    walls_gdf.to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "walls.geojson"), driver="GeoJSON")
-    
-    # Save the 4 door versions
-    if len(og_doors) > 0: gpd.GeoDataFrame(og_doors, geometry=[d['geom'] for d in og_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_og.geojson"), driver="GeoJSON")
-    gpd.GeoDataFrame(greedy_doors, geometry=[d['geom'] for d in greedy_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_greedy.geojson"), driver="GeoJSON")
-    gpd.GeoDataFrame(collinear_doors, geometry=[d['geom'] for d in collinear_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_collinear.geojson"), driver="GeoJSON")
-    gpd.GeoDataFrame(boolean_doors, geometry=[d['geom'] for d in boolean_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_boolean.geojson"), driver="GeoJSON")
-    
-    if len(native_doors) > 0: gpd.GeoDataFrame(native_doors, geometry=[d['geom'] for d in native_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_native.geojson"), driver="GeoJSON")
-    if len(local_doors) > 0: gpd.GeoDataFrame(local_doors, geometry=[d['geom'] for d in local_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_local.geojson"), driver="GeoJSON")
-    if len(hybrid_doors) > 0: gpd.GeoDataFrame(hybrid_doors, geometry=[d['geom'] for d in hybrid_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_hybrid.geojson"), driver="GeoJSON")
-    
-    # And buildings for the hover effect
-    footprints.to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "buildings.geojson"), driver="GeoJSON")
-    print("Pipeline Complete.")
+# %%
+# CELL 1  Load shapefile & DXF labels
+footprints = gpd.read_file(SHP_PATH)
+footprints['ID'] = footprints['ID'].astype(str)
+
+dxf_labels = get_dxf_labels(DXF_WORKING)
+H = compute_affine(dxf_labels, footprints)
+
+lines = extract_dxf_walls(DXF_WORKING)
+
+# %%
+# CELL 2  Affine transformation & bipartite label matching
+crosswalk = bipartite_label_match(dxf_labels, H, footprints)
+crosswalk.to_csv(OUT_CSV, index=False)
+
+master_polygons = footprints.merge(crosswalk[['footprint_id', 'chapel_id', 'match_method']], 
+                                   left_on='ID', right_on='footprint_id', how='left')
+for col in master_polygons.columns:
+    if master_polygons[col].dtype == object: master_polygons[col] = master_polygons[col].astype(str)
+        
+master_polygons.to_file(OUT_GPKG, layer='buildings', driver='GPKG')
+
+# %%
+# CELL 3  Process entrances & save vector outputs
+print("Saving Data...")
+lines_utm, og_doors, greedy_doors, collinear_doors, boolean_doors, native_doors, local_doors, hybrid_doors, walls_gdf = process_entrances(lines, H, footprints, crosswalk, dxf_labels)
+
+walls_gdf.to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "walls.geojson"), driver="GeoJSON")
+
+# Save the 4 door versions
+if len(og_doors) > 0: gpd.GeoDataFrame(og_doors, geometry=[d['geom'] for d in og_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_og.geojson"), driver="GeoJSON")
+gpd.GeoDataFrame(greedy_doors, geometry=[d['geom'] for d in greedy_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_greedy.geojson"), driver="GeoJSON")
+gpd.GeoDataFrame(collinear_doors, geometry=[d['geom'] for d in collinear_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_collinear.geojson"), driver="GeoJSON")
+gpd.GeoDataFrame(boolean_doors, geometry=[d['geom'] for d in boolean_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_boolean.geojson"), driver="GeoJSON")
+
+if len(native_doors) > 0: gpd.GeoDataFrame(native_doors, geometry=[d['geom'] for d in native_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_native.geojson"), driver="GeoJSON")
+if len(local_doors) > 0: gpd.GeoDataFrame(local_doors, geometry=[d['geom'] for d in local_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_local.geojson"), driver="GeoJSON")
+if len(hybrid_doors) > 0: gpd.GeoDataFrame(hybrid_doors, geometry=[d['geom'] for d in hybrid_doors], crs=footprints.crs).to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "doors_hybrid.geojson"), driver="GeoJSON")
+
+# And buildings for the hover effect
+footprints.to_crs("EPSG:4326").to_file(os.path.join(OUT_DIR, "vector_gis", "buildings.geojson"), driver="GeoJSON")
+print("Pipeline Complete.")

@@ -41,10 +41,10 @@ from scipy.spatial import cKDTree
 # ---------------------------------------------------------------------------
 
 BASE  = Path(__file__).resolve().parents[2]
-SHP   = "C:\\Users\\Public\\LAMP_DataStore\\ElBagawat\\100_Data\\130_BuildingFootprintsVectorData\\BuildingTracesCurrent\\Buildings_Mask.shp"
-DXF_P = "C:\\Users\\Public\\LAMP_DataStore\\ElBagawat\\200_Projects\\210_GSOC\\code-manan\\Site_CAD_Working_converted.dxf"
-EXCEL = "C:\\Users\\Public\\LAMP_DataStore\\ElBagawat\\200_Projects\\210_GSOC\\code-manan\\2026 El Bagawat Database Draft 1.xlsx"
-DEM_P = "C:\\Users\\Public\\LAMP_DataStore\\ElBagawat\\100_Data\\150_DigitalElevationModel\\Generated_DEMs\\Current_DEM\\Bagawat-DEM-NewImageryOnly-0.4m-DEM.tif"
+SHP   = str(BASE / "data" / "BaseSiteCAD" / "130_BuildingFootprintsVectorData" / "BuildingTracesCurrent" / "Buildings_Mask.shp")
+DXF_P = str(BASE / "data" / "Site_CAD_Working_converted.dxf")
+EXCEL = str(BASE / "data" / "2026 El Bagawat Database Draft 1.xlsx")
+DEM_P = str(BASE / "data" / "BaseSiteCAD" / "150_DigitalElevationModel" / "Generated_DEMs" / "Current_DEM" / "Bagawat-DEM-NewImageryOnly-0.4m-DEM.tif")
 OUT   = BASE / "outputs"
 OUT.mkdir(exist_ok=True)
 
@@ -54,9 +54,9 @@ def verify_paths():
     print("Input file check:")
     for label, p_raw in [("SHP", SHP), ("DXF", DXF_P), ("EXCEL", EXCEL), ("DEM", DEM_P)]:
         p = Path(p_raw)
-        status = "✓" if p.exists() else "✗ MISSING"
-        print(f"  {label:5s}  {status}  →  {p.name}")
-    print(f"  OUT        →  {OUT}\n")
+        status = "OK" if p.exists() else "MISSING"
+        print(f"  {label:5s}  {status:7s}  ->  {p.name}")
+    print(f"  OUT        ->  {OUT}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ def save_fig(figs_dir: Path, name: str, dpi=150, extra_formats=()):
     plt.savefig(figs_dir / f"{stem}.png", dpi=dpi, bbox_inches="tight")
     for fmt in extra_formats:
         plt.savefig(figs_dir / f"{stem}{fmt}", bbox_inches="tight")
-    print(f"  → {stem}.png" + ("".join(f" / {stem}{f}" for f in extra_formats)))
+    print(f"  -> {stem}.png" + ("".join(f" / {stem}{f}" for f in extra_formats)))
 
 
 # ---------------------------------------------------------------------------
@@ -139,33 +139,40 @@ DIR_COL    = "Entrace Direction"   # note: original typo in the spreadsheet
 
 
 def normalise_dir(s):
-    """Normalise a raw direction string to 'N', 'S', 'E', 'W', or None."""
+    """Normalise a raw direction string to a list of direction codes ('N', 'S', 'E', 'W')."""
     if s is None:
-        return None
+        return []
     if isinstance(s, float) and math.isnan(s):
-        return None
+        return []
     s = str(s).strip()
     if s.lower() in ("nan", "none", ""):
-        return None
-    s = s.upper()
-    # Try token-by-token first (handles "South (pg. 12)" etc.)
-    for token in s.split():
-        tok = token.strip("(),;./")
-        if tok in ("SOUTH", "S"): return "S"
-        if tok in ("NORTH", "N"): return "N"
-        if tok in ("EAST",  "E"): return "E"
-        if tok in ("WEST",  "W"): return "W"
-    # Fallback substring scan
-    if "SOUTH" in s: return "S"
-    if "NORTH" in s: return "N"
-    if "EAST"  in s: return "E"
-    if "WEST"  in s: return "W"
-    return None
+        return []
+    
+    # Remove parenthetical clauses
+    import re
+    s_clean = re.sub(r'\(.*?\)', '', s)
+    
+    DIR_MAP = {
+        "NORTH": "N", "N": "N",
+        "SOUTH": "S", "S": "S",
+        "EAST": "E", "E": "E",
+        "WEST": "W", "W": "W"
+    }
+    
+    words = re.findall(r'\b(NORTH|SOUTH|EAST|WEST|N|S|E|W)\b', s_clean.upper())
+    seen = set()
+    result = []
+    for w in words:
+        val = DIR_MAP[w]
+        if val not in seen:
+            seen.add(val)
+            result.append(val)
+    return result
 
 
 def load_excel_directions():
     df = pd.read_excel(str(EXCEL), sheet_name="Database Full")
-    print(f"Excel: {len(df)} rows × {len(df.columns)} cols")
+    print(f"Excel: {len(df)} rows x {len(df.columns)} cols")
     df["chapel_id"] = df[CHAPEL_COL].astype(str).str.strip()
     df["raw_dir"]   = df[DIR_COL].astype(str).str.strip()
     df["direction"] = df["raw_dir"].apply(normalise_dir)
@@ -173,8 +180,20 @@ def load_excel_directions():
 
 
 def print_direction_audit(df):
-    dir_counts  = df["direction"].value_counts(dropna=False)
-    missing_dir = df[df["direction"].isna()]
+    flat_dirs = []
+    for d in df["direction"]:
+        if isinstance(d, (list, tuple)):
+            flat_dirs.extend(d)
+            
+    missing_count = df["direction"].apply(lambda d: len(d) == 0 if isinstance(d, (list, tuple)) else True).sum()
+    
+    counts_dict = pd.Series(flat_dirs).value_counts().to_dict()
+    if missing_count > 0:
+        counts_dict[None] = missing_count
+        
+    dir_counts = pd.Series(counts_dict)
+    
+    missing_dir = df[df["direction"].apply(lambda d: len(d) == 0 if isinstance(d, (list, tuple)) else True)]
     print(f"\nDirection distribution:\n{dir_counts.to_string()}")
     print(f"\nMissing directions: {len(missing_dir)} / {len(df)}")
 
@@ -187,11 +206,24 @@ def print_direction_audit(df):
     print(f"  Non-numeric IDs      : {non_num['chapel_id'].tolist() or 'none'}")
     print(f"  Ambiguous directions : {len(ambig)}")
     for _, r in ambig.iterrows():
-        print(f"    Chapel {r['chapel_id']:>4s}  →  {r['raw_dir']}")
+        print(f"    Chapel {r['chapel_id']:>4s}  ->  {r['raw_dir']}")
     return dir_counts
 
 
 def plot_direction_audit(df, dir_counts, figs_dir):
+    flat_dirs = []
+    for d in df["direction"]:
+        if isinstance(d, (list, tuple)):
+            flat_dirs.extend(d)
+            
+    missing_count = df["direction"].apply(lambda d: len(d) == 0 if isinstance(d, (list, tuple)) else True).sum()
+    
+    counts_dict = pd.Series(flat_dirs).value_counts().to_dict()
+    if missing_count > 0:
+        counts_dict[None] = missing_count
+        
+    dir_counts = pd.Series(counts_dict)
+
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 
     labels_pie  = [str(x) if str(x) != "None" else "Missing" for x in dir_counts.index]
@@ -218,7 +250,7 @@ def plot_direction_audit(df, dir_counts, figs_dir):
 
 def load_dxf_labels():
     """Return dict of {chapel_id_str: (dxf_x, dxf_y)} for all numeric text labels."""
-    print("Parsing DXF for numeric text labels …")
+    print("Parsing DXF for numeric text labels ...")
     doc = ezdxf.readfile(str(DXF_P))
     msp = doc.modelspace()
 
@@ -245,7 +277,7 @@ def plot_dxf_labels(dxf_labels, figs_dir):
     ax.scatter(xs, ys, s=8, c="tomato", alpha=0.6, zorder=3)
     for k, (lx, ly) in list(dxf_labels.items())[:40]:
         ax.annotate(k, (lx, ly), fontsize=5, ha="center", color="#333333")
-    ax.set_title(f"DXF Numeric Text Labels ({len(dxf_labels)} total) — raw DXF space",
+    ax.set_title(f"DXF Numeric Text Labels ({len(dxf_labels)} total) - raw DXF space",
                  fontsize=13)
     ax.set_xlabel("DXF X"); ax.set_ylabel("DXF Y")
     plt.tight_layout()
@@ -313,7 +345,7 @@ def attribute_footprints(fp, crosswalk, df):
     """Join crosswalk + Excel directions back onto the footprint GeoDataFrame."""
     fp = fp.copy()
     fp["chapel_id"] = None
-    fp["direction"] = None
+    fp["direction"] = [() for _ in range(len(fp))]
     fp["raw_dir"]   = None
 
     for _, cw in crosswalk.iterrows():
@@ -321,11 +353,12 @@ def attribute_footprints(fp, crosswalk, df):
         fp.at[idx, "chapel_id"] = cid
         match = df[df["chapel_id"] == cid]
         if not match.empty:
-            fp.at[idx, "direction"] = match.iloc[0]["direction"]
+            dirs = match.iloc[0]["direction"]
+            fp.at[idx, "direction"] = tuple(dirs) if isinstance(dirs, (list, tuple)) else dirs
             fp.at[idx, "raw_dir"]   = match.iloc[0]["raw_dir"]
 
     n_labelled   = fp["chapel_id"].notna().sum()
-    n_with_dir   = fp["direction"].notna().sum()
+    n_with_dir   = fp["direction"].apply(lambda d: len(d) > 0 if isinstance(d, (list, tuple)) else False).sum()
     n_no_dir     = n_labelled - n_with_dir
     n_unlabelled = fp["chapel_id"].isna().sum()
     print(f"Attribution:  labelled={n_labelled}  with_dir={n_with_dir}"
@@ -346,7 +379,7 @@ def plot_bipartite_matching(fp, dxf_labels, crosswalk, H_rough, figs_dir):
                 [cw["label_utm_y"], fp.iloc[idx].geometry.centroid.y],
                 color="gray", linewidth=0.5, alpha=0.4)
     ax.legend(fontsize=10)
-    ax.set_title(f"DXF→UTM Bipartite Matching ({len(crosswalk)} pairs)",
+    ax.set_title(f"DXF->UTM Bipartite Matching ({len(crosswalk)} pairs)",
                  fontsize=13, fontweight="bold")
     ax.set_xlabel("Easting (m)"); ax.set_ylabel("Northing (m)")
     plt.tight_layout()
@@ -359,7 +392,7 @@ def plot_attribution_map(fp, n_with_dir, n_no_dir, n_unlabelled, figs_dir):
 
     for idx, row in fp.iterrows():
         if   row["chapel_id"] is None:   c = ATTR_CLR["unlabelled"]
-        elif row["direction"] is None:   c = ATTR_CLR["no_dir"]
+        elif not row["direction"]:       c = ATTR_CLR["no_dir"]
         else:                            c = ATTR_CLR["has_dir"]
         fp.loc[[idx]].plot(ax=ax, color=c, edgecolor="white", linewidth=0.4, alpha=0.85)
 
@@ -372,7 +405,7 @@ def plot_attribution_map(fp, n_with_dir, n_no_dir, n_unlabelled, figs_dir):
                     color="white", fontweight="bold")
 
     # Red dots for chapels with no direction
-    no_dir_fp = fp[fp["chapel_id"].notna() & fp["direction"].isna()]
+    no_dir_fp = fp[fp["chapel_id"].notna() & fp["direction"].apply(lambda d: len(d) == 0)]
     if len(no_dir_fp):
         ax.scatter(no_dir_fp.geometry.centroid.x, no_dir_fp.geometry.centroid.y,
                    s=35, c="red", zorder=10, edgecolors="darkred", linewidths=0.5)
@@ -384,7 +417,7 @@ def plot_attribution_map(fp, n_with_dir, n_no_dir, n_unlabelled, figs_dir):
         mpatches.Patch(color="red",                  label="Labelled but no direction (red dot)"),
     ]
     ax.legend(handles=patches, loc="lower left", fontsize=10, framealpha=0.9)
-    ax.set_title("El-Bagawat — Chapel Attribution + Missing Direction Flags",
+    ax.set_title("El-Bagawat - Chapel Attribution + Missing Direction Flags",
                  fontsize=15, fontweight="bold")
     ax.set_xlabel("Easting (m)"); ax.set_ylabel("Northing (m)")
     plt.tight_layout()
@@ -481,28 +514,25 @@ def place_doors(fp):
         poly = row.geometry
         if poly is None or poly.is_empty:
             continue
-        dc = row["direction"]
-        if dc is not None:
-            mx, my, nx_, ny_, el = best_wall(poly, dc)
-            src, conf = "direction_attributed", 0.85
-        else:
-            mx, my, nx_, ny_, el = southernmost_wall(poly)
-            dc = "S_fallback"
-            src, conf = "southernmost_fallback", 0.30
-
-        hl = min(DOOR_HALF, el / 3.0)
-        ls, pt = make_door_geometry(mx, my, nx_, ny_, hl, DOOR_OFF)
-        rows.append({
-            "geometry":   ls,
-            "door_pt":    pt,
-            "chapel_id":  row["chapel_id"],
-            "direction":  dc,
-            "raw_dir":    row["raw_dir"],
-            "source":     src,
-            "confidence": conf,
-            "edge_len_m": round(el, 2),
-            "shp_idx":    idx,
-        })
+        dc_list = row["direction"]
+        if isinstance(dc_list, (list, tuple)) and len(dc_list) > 0:
+            for dc in dc_list:
+                mx, my, nx_, ny_, el = best_wall(poly, dc)
+                src, conf = "direction_attributed", 0.85
+                hl = min(DOOR_HALF, el / 3.0)
+                ls, pt = make_door_geometry(mx, my, nx_, ny_, hl, DOOR_OFF)
+                rows.append({
+                    "geometry":   ls,
+                    "door_pt":    pt,
+                    "chapel_id":  row["chapel_id"],
+                    "direction":  dc,
+                    "raw_dir":    row["raw_dir"],
+                    "source":     src,
+                    "confidence": conf,
+                    "edge_len_m": round(el, 2),
+                    "shp_idx":    idx,
+                })
+        # If empty list, do NOT place any doors (keep empty, no fallback to south).
 
     doors_gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs=fp.crs)
     doors_pts = gpd.GeoDataFrame(
@@ -533,7 +563,7 @@ def plot_doors_all(fp, doors_gdf, figs_dir):
     _draw_chapel_ids(ax, fp, fontsize=4, color="#111")
     _draw_red_dot_no_dir(ax, fp, s=35)
     ax.legend(handles=patches, loc="lower left", fontsize=9, framealpha=0.9)
-    ax.set_title("Approach 5 — Shapefile-Native Direction-Aware Doors",
+    ax.set_title("Approach 5 - Shapefile-Native Direction-Aware Doors",
                  fontsize=15, fontweight="bold")
     ax.set_xlabel("Easting (m)"); ax.set_ylabel("Northing (m)")
     plt.tight_layout()
@@ -559,7 +589,7 @@ def plot_doors_zoom(fp, doors_gdf, figs_dir, zoom_radius=200):
     _draw_chapel_ids(ax, fp_z, fontsize=8, color="#111")
     _draw_red_dot_no_dir(ax, fp_z, s=80)
     ax.legend(handles=patches, loc="lower left", fontsize=10)
-    ax.set_title(f"Detail Zoom — Central Cluster (±{zoom_radius} m from centroid)",
+    ax.set_title(f"Detail Zoom - Central Cluster (+/-{zoom_radius} m from centroid)",
                  fontsize=14, fontweight="bold")
     ax.set_xlabel("Easting (m)"); ax.set_ylabel("Northing (m)")
     plt.tight_layout()
@@ -576,7 +606,7 @@ def load_dem():
     Open the DEM file and return a dict with all relevant arrays/metadata.
     Keys: arr, crs, nodata, bounds, res, transform, disp, e_min, e_max, extent
     """
-    print("Loading DEM …")
+    print("Loading DEM ...")
     with rasterio.open(str(DEM_P)) as src:
         dem = {
             "arr":       src.read(1).astype(np.float32),
@@ -597,7 +627,7 @@ def load_dem():
                      dem["bounds"].bottom, dem["bounds"].top]
 
     print(f"  CRS={dem['crs']}  shape={dem['arr'].shape}  "
-          f"res={dem['res']:.2f} m  elev={dem['e_min']:.1f}–{dem['e_max']:.1f} m")
+          f"res={dem['res']:.2f} m  elev={dem['e_min']:.1f}-{dem['e_max']:.1f} m")
     return dem
 
 
@@ -626,7 +656,7 @@ def plot_dem_hillshade(dem, figs_dir):
         cmap="terrain",
         norm=mcolors.Normalize(vmin=dem["e_min"], vmax=dem["e_max"]))
     plt.colorbar(sm, ax=ax, label="Elevation (m)", shrink=0.6)
-    ax.set_title("El-Bagawat — DEM Hillshade", fontsize=14, fontweight="bold")
+    ax.set_title("El-Bagawat - DEM Hillshade", fontsize=14, fontweight="bold")
     ax.set_xlabel("Easting (m)"); ax.set_ylabel("Northing (m)")
     plt.tight_layout()
     save_fig(figs_dir, "07_dem_hillshade.png")
@@ -659,7 +689,7 @@ def plot_dem_with_doors(dem, hs, fp, doors_gdf, figs_dir):
     plt.colorbar(sm2, ax=ax, label="Elevation (m)", shrink=0.55)
     ax.legend(handles=direction_legend_patches(), loc="lower left",
               fontsize=9, framealpha=0.9)
-    ax.set_title("El-Bagawat — DEM + Footprints + Approach-5 Doors",
+    ax.set_title("El-Bagawat - DEM + Footprints + Approach-5 Doors",
                  fontsize=15, fontweight="bold")
     ax.set_xlabel("Easting (m)"); ax.set_ylabel("Northing (m)")
     plt.tight_layout()
@@ -721,7 +751,7 @@ def _draw_chapel_ids(ax, fp, fontsize=4, color="white", bbox=None):
 
 
 def _draw_red_dot_no_dir(ax, fp, s=35):
-    no_dir = fp[fp["chapel_id"].notna() & fp["direction"].isna()]
+    no_dir = fp[fp["chapel_id"].notna() & fp["direction"].apply(lambda d: len(d) == 0)]
     if len(no_dir):
         ax.scatter(no_dir.geometry.centroid.x, no_dir.geometry.centroid.y,
                    s=s, c="red", zorder=10, edgecolors="darkred", linewidths=0.5)
