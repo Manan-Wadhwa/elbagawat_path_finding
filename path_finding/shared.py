@@ -64,7 +64,16 @@ def get_base_preprocessed_data():
         return tuple(x.strip() for x in d.split(",") if x.strip())
     fp["direction"] = fp["direction"].apply(_parse)
 
-    return fp, gpd.read_file(str(paths["doors"])), gpd.read_file(str(paths["pts"])), pd.read_csv(paths["cw"])
+    doors_df = gpd.read_file(str(paths["doors"]))
+    pts_df = gpd.read_file(str(paths["pts"]))
+    
+    from shapely import wkt
+    if "door_pt" in doors_df.columns:
+        doors_df["door_pt"] = doors_df["door_pt"].apply(lambda x: wkt.loads(x) if isinstance(x, str) else x)
+    if "door_pt" in pts_df.columns:
+        pts_df["door_pt"] = pts_df["door_pt"].apply(lambda x: wkt.loads(x) if isinstance(x, str) else x)
+
+    return fp, doors_df, pts_df, pd.read_csv(paths["cw"])
 
 
 def generate_free_space_skeleton(footprints_gdf, roi_bounds=None, resolution=0.5):
